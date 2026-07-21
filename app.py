@@ -5,6 +5,13 @@ import plotly.express as px
 import boto3, os
 from pathlib import Path
 
+st.set_page_config(
+    page_title = "Housing Price Prediction Dashboard",
+    page_icon = "🏡",
+    layout = "wide",
+    initial_sidebar_state = "expanded"
+)
+
 # ============================
 # Config
 # ============================
