@@ -68,19 +68,29 @@ fe_df, disp_df = load_data()
 # ============================
 # UI
 # ============================
-st.title("🏠 Housing Price Prediction — Holdout Explorer")
+st.title("🏠 Housing Price Prediction Dashboard")
+
+st.markdown(
+"""
+Analyze machine learning predictions on unseen housing data.
+Compare predicted prices against actual prices using interactive filters,
+evaluation metrics, and visualizations.
+"""
+)
+
+st.divider()
 
 years = sorted(disp_df["year"].unique())
 months = list(range(1, 13))
 regions = ["All"] + sorted(disp_df["region"].dropna().unique())
 
-col1, col2, col3 = st.columns(3)
+col1, col2, col3 = st.columns([1, 1, 1.2])
 with col1:
-    year = st.selectbox("Select Year", years, index = 0)
+    year = st.selectbox("📅 Select Year", years, index = 0)
 with col2:
-    month = st.selectbox("Select Month", months, index = 0)
+    month = st.selectbox("📅 Select Month", months, index = 0)
 with col3:
-    region = st.selectbox("Select Region", regions, index = 0)
+    region = st.selectbox("🌍 Select Region", regions, index = 0)
 
 if st.button("Show Predictions 🚀"):
     mask = (disp_df["year"] == year) & (disp_df["month"] == month)
