@@ -13,6 +13,67 @@ st.set_page_config(
 )
 
 # ============================
+# Sidebar
+# ============================
+
+st.sidebar.title("🏠 Housing Dashboard")
+
+st.sidebar.markdown("---")
+
+st.sidebar.markdown(
+    """
+### 📌 Project
+
+**Model**
+- XGBoost Regressor
+
+**Dataset**
+- Zillow Housing Prices
+
+**Framework**
+- Streamlit + FastAPI
+
+**Cloud Storage**
+- AWS S3
+"""
+)
+
+st.sidebar.markdown("---")
+
+st.sidebar.subheader("⚙️ System Status")
+
+try:
+    health = requests.get("http://127.0.0.1:8000/health", timeout = 5)
+    health.raise_for_status()
+
+    health_data = health.json()
+
+    st.sidebar.success("✅ API Connected")
+
+    if health_data["status"] == "healthy":
+        st.sidebar.success("✅ Model Loaded")
+
+        st.sidebar.markdown("### 📊 Model Details")
+
+        st.sidebar.write(
+            f"*Expected Features:* {health_data.get('n_features_expected', 'Unknown')}"
+        )
+
+        st.sidebar.write(
+            f"*Model File:* {Path(health_data['model_path']).name}"
+        )
+
+    else:
+        st.sidebar.error("❌ Model Not Loaded")
+
+except Exception:
+    st.sidebar.error("❌ API Offline")
+
+st.sidebar.markdown("---")
+
+st.sidebar.caption("Version 1.0")
+
+# ============================
 # Config
 # ============================
 API_URL = os.environ.get("API_URL", "http://127.0.0.1:8000/predict")
@@ -84,15 +145,20 @@ years = sorted(disp_df["year"].unique())
 months = list(range(1, 13))
 regions = ["All"] + sorted(disp_df["region"].dropna().unique())
 
-col1, col2, col3 = st.columns([1, 1, 1.2])
-with col1:
-    year = st.selectbox("📅 Select Year", years, index = 0)
-with col2:
-    month = st.selectbox("📅 Select Month", months, index = 0)
-with col3:
-    region = st.selectbox("🌍 Select Region", regions, index = 0)
+st.subheader("🔎 Filters")
 
-if st.button("Show Predictions 🚀"):
+with st.container():
+    
+    col1, col2, col3 = st.columns([1, 1, 1.2])
+
+    with col1:
+        year = st.selectbox("📅 Year", years, index = 0)
+    with col2:
+        month = st.selectbox("📅 Month", months, index = 0)
+    with col3:
+        region = st.selectbox("🌍 Region", regions, index = 0)
+
+if st.button("🚀 Generate Predictions"):
     mask = (disp_df["year"] == year) & (disp_df["month"] == month)
     if region != "All":
         mask &= (disp_df["region"] == region)
@@ -102,14 +168,15 @@ if st.button("Show Predictions 🚀"):
     if len(idx) == 0:
         st.warning("No data found for these filters.")
     else:
-        st.write(f"📅 Running predictions for **{year}-{month:02d}** | Region: **{region}**")
+        st.success(f"Showing predictions for {year}-{month:02d} | Region: {region}")
 
         payload = fe_df.loc[idx].to_dict(orient = "records")
 
         try:
-            resp = requests.post(API_URL, json = payload, timeout = 60) # type: ignore
-            resp.raise_for_status()
-            out = resp.json()
+            with st.spinner("🔄 Generating predictions... Please wait..."):
+                resp = requests.post(API_URL, json = payload, timeout = 60) # type: ignore
+                resp.raise_for_status()
+                out = resp.json()
             preds = out.get("predictions", [])
             actuals = out.get("actuals", None)
 
@@ -125,19 +192,53 @@ if st.button("Show Predictions 🚀"):
             rmse = ((view["prediction"] - view["actual_price"]) ** 2).mean() ** 0.5
             avg_pct_error = ((view["prediction"] - view["actual_price"]).abs() / view["actual_price"]).mean() * 100
 
-            st.subheader("Predictions vs Actuals")
-            st.dataframe(
-                view[["date", "region", "actual_price", "prediction"]].reset_index(drop = True),
-                use_container_width = True
+            display_view = view.copy()
+
+            display_view["date"] = pd.to_datetime(
+                display_view["date"]
+            ).dt.strftime("%d %b %Y")
+            
+            display_view["actual_price"] = (
+                 display_view["actual_price"]
+                 .round(0)
+                 .map(lambda x: f"${x:,.0f}")
+            )
+            
+            display_view["prediction"] = (
+                display_view["prediction"]
+                .round(0)
+                .map(lambda x: f"${x:,.0f}")
             )
 
+            st.subheader("📋 Prediction Results")
+
+            results_df = display_view[["date", "region", "actual_price", "prediction"]].reset_index(drop = True)
+
+            st.dataframe(
+                 results_df,
+                 width = "stretch"
+            )
+
+            csv = results_df.to_csv(index = False).encode("utf-8")
+
+            st.download_button(
+                 label = "📥 Download Predictions (CSV)",
+                 data = csv,
+                 file_name = f"housing_predictions_{year}_{month:02d}.csv",
+                 mime = "text/csv"
+            )
+
+            st.markdown("---")
+            st.subheader("📊 Model Performance Metrics")
+
             c1, c2, c3 = st.columns(3)
+
             with c1:
-                st.metric("MAE", f"{mae:,.0f}")
+                st.metric("📉 MAE", f"${mae:,.0f}")
             with c2:
-                st.metric("RMSE", f"{rmse:,.0f}")
+                st.metric("📊 RMSE", f"${rmse:,.0f}")
             with c3:
-                st.metric("Avg % Error", f"{avg_pct_error:.2f}%")
+                st.metric("🎯 Avg Error", f"{avg_pct_error:.2f}%")
 
             # ============================
             # Yearly Trend Chart
@@ -170,31 +271,66 @@ if st.button("Show Predictions 🚀"):
             # Highlight selected month
             monthly_avg["highlight"] = monthly_avg["month"].apply(lambda m: "Selected" if m == month else "Other")
 
+            st.markdown("---")
+            st.subheader("📈 Yearly Prediction Trend")
+
             fig = px.line(
                 monthly_avg,
                 x = "month",
                 y = ["actual_price", "prediction"],
                 markers = True,
                 labels = {"value": "Price", "month": "Month"},
-                title = f"Yearly Trend — {year}{'' if region=='All' else f' — {region}'}"
+                title = None
+            )
+
+            fig.update_layout(
+                template = "plotly_white",
+                hovermode = "x unified",
+                height = 500,
+                legend_title_text = "",
+                xaxis_title = "Month",
+                yaxis_title = "House Price ($)",
+                title = dict(text = ""),
+                font = dict(size = 14)
+            )
+
+            fig.update_traces(
+                line = dict(width = 3),
+                marker = dict(size = 8)
+            )
+
+            fig.for_each_trace(
+                lambda t: t.update(
+                    name = "Actual Price" if t.name == "actual_price" else "Predicted Price"
+                )
             )
 
             # Add highlight with background shading
             highlight_month = month
             fig.add_vrect(
-                x0 = highlight_month - 0.5,
-                x1 = highlight_month + 0.5,
-                fillcolor = "red",
-                opacity = 0.1,
+                x0 = month - 0.5,
+                x1 = month + 0.5,
+                fillcolor = "gold",
+                opacity = 0.15,
                 layer = "below",
-                line_width = 0,
+                line_width = 0
             )
 
-            st.plotly_chart(fig, use_container_width = True)
+            st.plotly_chart(fig, width = "stretch")
 
-        except Exception as e:
-            st.error(f"API call failed: {e}")
-            st.exception(e)
+        except requests.exceptions.ConnectionError:
+            st.error("❌ Unable to connect to the Prediction API.")
+            st.info("Please make sure the FastAPI server is running on port 8000.")
+
+        except requests.exceptions.Timeout:
+            st.error("⏱️ The Prediction API took too long to respond.")
+
+        except requests.exceptions.HTTPError as e:
+            status_code = e.response.status_code if e.response else "Unknown"
+            st.error(f"⚠️ API returned an error: {status_code}")
+
+        except Exception:
+            st.error("❌ An unexpected error occurred while generating predictions.")
 
 else:
-    st.info("Choose filters and click **Show Predictions** to compute.")
+    st.caption("👆 Select a year, month, and region, then click **🚀 Generate Predictions**.")
