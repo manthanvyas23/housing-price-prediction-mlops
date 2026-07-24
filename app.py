@@ -341,7 +341,9 @@ if st.button("🚀 Generate Predictions"):
             st.error(f"⚠️ API returned an error: {status_code}")
 
         except requests.exceptions.RequestException:
-            st.error("❌ An unexpected network error occurred while generating predictions.")
+            st.error(
+                "❌ An unexpected network error occurred while generating predictions."
+            )
 
 else:
     st.caption(
