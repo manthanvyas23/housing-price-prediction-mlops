@@ -64,7 +64,7 @@ try:
     else:
         st.sidebar.error("❌ Model Not Loaded")
 
-except Exception:
+except requests.exceptions.RequestException:
     st.sidebar.error("❌ API Offline")
 
 st.sidebar.markdown("---")
@@ -300,11 +300,11 @@ if st.button("🚀 Generate Predictions"):
                 legend_title_text="",
                 xaxis_title="Month",
                 yaxis_title="House Price ($)",
-                title=dict(text=""),
-                font=dict(size=14),
+                title={"text": ""},
+                font={"size": 14},
             )
 
-            fig.update_traces(line=dict(width=3), marker=dict(size=8))
+            fig.update_traces(line={"width": 3}, marker={"size": 8})
 
             fig.for_each_trace(
                 lambda t: t.update(
@@ -340,8 +340,8 @@ if st.button("🚀 Generate Predictions"):
             status_code = e.response.status_code if e.response else "Unknown"
             st.error(f"⚠️ API returned an error: {status_code}")
 
-        except Exception:
-            st.error("❌ An unexpected error occurred while generating predictions.")
+        except requests.exceptions.RequestException:
+            st.error("❌ An unexpected network error occurred while generating predictions.")
 
 else:
     st.caption(

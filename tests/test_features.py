@@ -152,7 +152,7 @@ def test_full_pipeline_integration(tmp_path):
     raw_path = tmp_path / "raw.csv"
     raw.to_csv(raw_path, index=False)
 
-    train, eval, holdout = load_and_split_data(
+    train, eval, _holdout = load_and_split_data(
         raw_path=str(raw_path), output_dir=tmp_path
     )
 
@@ -168,7 +168,7 @@ def test_full_pipeline_integration(tmp_path):
         "eval", raw_dir=tmp_path, processed_dir=processed_dir, metros_path=None
     )
 
-    out_train, out_eval, out_holdout, freq_map, te = run_feature_engineering(
+    out_train, out_eval, _out_holdout, freq_map, te = run_feature_engineering(
         in_train_path=processed_dir / "cleaning_train.csv",
         in_eval_path=processed_dir / "cleaning_eval.csv",
         output_dir=processed_dir,
