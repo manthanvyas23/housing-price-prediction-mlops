@@ -29,6 +29,12 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
+      - name: Run Preprocessing
+        run: uv run python src/feature_pipeline/preprocess.py
+        
+      - name: Run Feature Engineering
+        run: uv run python src/feature_pipeline/feature_engineering.py
+
       - name: Run Ruff Linter
         run: uv run ruff check .
 
