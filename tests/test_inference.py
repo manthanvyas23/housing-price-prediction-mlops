@@ -1,7 +1,7 @@
 # tests/test_inference.py
 import sys
-import os
 from pathlib import Path
+
 import pandas as pd
 import pytest
 
@@ -12,12 +12,14 @@ if str(ROOT) not in sys.path:
 
 from src.inference_pipeline.inference import predict
 
-@pytest.fixture(scope = "session")
+
+@pytest.fixture(scope="session")
 def sample_df():
     """Load a small sample from cleaning_eval.csv for inference testing."""
     sample_path = ROOT / "data/processed/feature_engineered_eval.csv"
-    df = pd.read_csv(sample_path).sample(5, random_state = 42).reset_index(drop = True)
+    df = pd.read_csv(sample_path).sample(5, random_state=42).reset_index(drop=True)
     return df
+
 
 def test_inference_runs_and_returns_predictions(sample_df):
     """Ensure inference pipeline runs and returns predicted_price column."""
