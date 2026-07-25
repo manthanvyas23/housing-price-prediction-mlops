@@ -160,6 +160,8 @@ def test_full_pipeline_integration(tmp_path):
     processed_dir.mkdir(exist_ok=True)
     train.to_csv(tmp_path / "train.csv", index=False)
     eval.to_csv(tmp_path / "eval.csv", index=False)
+    holdout = eval.copy()
+    holdout.to_csv(tmp_path / "holdout.csv", index=False)
 
     preprocess_split(
         "train", raw_dir=tmp_path, processed_dir=processed_dir, metros_path=None
@@ -167,10 +169,14 @@ def test_full_pipeline_integration(tmp_path):
     preprocess_split(
         "eval", raw_dir=tmp_path, processed_dir=processed_dir, metros_path=None
     )
+    preprocess_split(
+        "holdout", raw_dir=tmp_path, processed_dir=processed_dir, metros_path=None
+    )
 
     out_train, out_eval, _out_holdout, freq_map, te = run_feature_engineering(
         in_train_path=processed_dir / "cleaning_train.csv",
         in_eval_path=processed_dir / "cleaning_eval.csv",
+        in_holdout_path=processed_dir / "cleaning_holdout.csv",
         output_dir=processed_dir,
     )
 
