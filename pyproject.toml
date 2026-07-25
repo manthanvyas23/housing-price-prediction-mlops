@@ -12,15 +12,20 @@ dependencies = [
     "great-expectations==1.5.8",
     "lightgbm>=4.6.0",
     "matplotlib>=3.10.5",
-    "mlflow>=3.3.1",
+    "mlflow==3.3.1",
     "nbformat>=5.10.4",
     "numpy==1.26.4",
     "optuna>=4.5.0",
     "pandas==2.1.1",
     "polars>=1.32.3",
     "pytest>=8.4.1",
+    "ruff>=0.12.8",
+    "black>=24.10.0",
     "scikit-learn>=1.7.1",
     "seaborn>=0.13.2",
     "streamlit>=1.48.1",
     "xgboost==3.0.4",
 ]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

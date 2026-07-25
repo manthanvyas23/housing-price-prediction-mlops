@@ -1,11 +1,13 @@
-# Goal: Create a FastAPI app to serve your trained ML model into a web service that anyone 
+# Goal: Create a FastAPI app to serve your trained ML model into a web service that anyone
 # (or any system) can call over HTTP.
 
-from fastapi import FastAPI            # Web framework for APIs
-from pathlib import Path               # For handling file paths cleanly
-from typing import List, Dict, Any     # For type hints (clarity in endpoints)
-import pandas as pd                    # To handle incoming JSON as DataFrames
-import boto3, os                       # AWS SDK for Python + env variables
+import os
+from pathlib import Path  # For handling file paths cleanly
+from typing import Any  # For type hints (clarity in endpoints)
+
+import boto3  # AWS SDK for Python + env variables
+import pandas as pd  # To handle incoming JSON as DataFrames
+from fastapi import FastAPI  # Web framework for APIs
 
 # Import inference pipeline
 from src.inference_pipeline.inference import predict
@@ -16,30 +18,39 @@ from src.inference_pipeline.inference import predict
 
 S3_BUCKET = os.getenv("S3_BUCKET", "housing-price-prediction-mlops")
 REGION = os.getenv("AWS_REGION", "ap-southeast-2")
-s3 = boto3.client("s3", region_name = REGION)
+s3 = boto3.client("s3", region_name=REGION)
 
-# Ensures your app always has the latest model/data locally, 
+
+# Ensures your app always has the latest model/data locally,
 # but avoids re-downloading every time it starts.
 def load_from_s3(key, local_path):
     """Download from S3 if not already cached locally."""
     local_path = Path(local_path)
     if not local_path.exists():
-        os.makedirs(local_path.parent, exist_ok = True)
+        os.makedirs(local_path.parent, exist_ok=True)
         print(f"📥 Downloading {key} from S3…")
         s3.download_file(S3_BUCKET, key, str(local_path))
     return str(local_path)
+
 
 # ----------------------------
 # Paths
 # ----------------------------
 
 # Downloads model + training features from S3 if not cached.
-MODEL_PATH = Path(load_from_s3("models/xgb_best_model.pkl", "models/xgb_best_model.pkl"))
-TRAIN_FE_PATH = Path(load_from_s3("processed/feature_engineered_train.csv", "data/processed/feature_engineered_train.csv"))
+MODEL_PATH = Path(
+    load_from_s3("models/xgb_best_model.pkl", "models/xgb_best_model.pkl")
+)
+TRAIN_FE_PATH = Path(
+    load_from_s3(
+        "processed/feature_engineered_train.csv",
+        "data/processed/feature_engineered_train.csv",
+    )
+)
 
 # Load expected training features for alignment
 if TRAIN_FE_PATH.exists():
-    _train_cols = pd.read_csv(TRAIN_FE_PATH, nrows = 1)
+    _train_cols = pd.read_csv(TRAIN_FE_PATH, nrows=1)
     TRAIN_FEATURE_COLUMNS = [c for c in _train_cols.columns if c != "price"]
 else:
     TRAIN_FEATURE_COLUMNS = None
@@ -49,17 +60,19 @@ else:
 # ----------------------------
 
 # Instantiates the FastAPI app.
-app = FastAPI(title = "Housing Regression API")
+app = FastAPI(title="Housing Regression API")
+
 
 # / → simple landing endpoint to confirm API is alive.
 @app.get("/")
 def root():
     return {"message": "Housing Regression API is running 🚀"}
 
+
 # /health → checks if model exists, returns status info (like expected feature count).
 @app.get("/health")
 def health():
-    status: Dict[str, Any] = {"model_path": str(MODEL_PATH)}
+    status: dict[str, Any] = {"model_path": str(MODEL_PATH)}
     if not MODEL_PATH.exists():
         status["status"] = "unhealthy"
         status["error"] = "Model not found"
@@ -69,17 +82,18 @@ def health():
             status["n_features_expected"] = len(TRAIN_FEATURE_COLUMNS)
     return status
 
+
 # Prediction Endpoint: This is the core ML serving endpoint.
 @app.post("/predict")
-def predict_batch(data: List[dict]):
+def predict_batch(data: list[dict]):
     if not MODEL_PATH.exists():
-        return {"error": f"Model not found at {str(MODEL_PATH)}"}
+        return {"error": f"Model not found at {MODEL_PATH!s}"}
 
     df = pd.DataFrame(data)
     if df.empty:
         return {"error": "No data provided"}
 
-    preds_df = predict(df, model_path = MODEL_PATH)
+    preds_df = predict(df, model_path=MODEL_PATH)
 
     resp = {"predictions": preds_df["predicted_price"].astype(float).tolist()}
     if "actual_price" in preds_df.columns:
@@ -87,8 +101,10 @@ def predict_batch(data: List[dict]):
 
     return resp
 
+
 # Batch runner
 from src.batch.run_monthly import run_monthly_predictions
+
 
 # Trigger a monthly batch job via API.
 @app.post("/run_batch")
@@ -96,9 +112,10 @@ def run_batch():
     preds = run_monthly_predictions()
     return {
         "status": "success",
-        "rows_predicted": int(len(preds)),
-        "output_dir": "data/predictions/"
+        "rows_predicted": len(preds),
+        "output_dir": "data/predictions/",
     }
+
 
 # Returns a preview of the most recent batch predictions.
 @app.get("/latest_predictions")
@@ -112,6 +129,6 @@ def latest_predictions(limit: int = 5):
     df = pd.read_csv(latest_file)
     return {
         "file": latest_file.name,
-        "rows": int(len(df)),
-        "preview": df.head(limit).to_dict(orient = "records")
+        "rows": len(df),
+        "preview": df.head(limit).to_dict(orient="records"),
     }
