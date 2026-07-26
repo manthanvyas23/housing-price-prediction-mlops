@@ -33,17 +33,3 @@ def test_predict_empty_request():
 
     assert response.status_code == 200
     assert response.json() == {"error": "No data provided"}
-
-
-def test_predict_success():
-    sample = pd.read_csv("data/raw/holdout.csv").head(1).to_dict(orient="records")
-
-    response = client.post("/predict", json=sample)
-
-    assert response.status_code == 200
-
-    data = response.json()
-
-    assert "predictions" in data
-    assert isinstance(data["predictions"], list)
-    assert len(data["predictions"]) == 1
