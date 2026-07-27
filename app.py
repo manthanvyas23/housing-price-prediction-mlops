@@ -6,6 +6,7 @@ import pandas as pd
 import plotly.express as px
 import requests
 import streamlit as st
+from joblib import load
 
 st.set_page_config(
     page_title="Housing Price Prediction Dashboard",
@@ -13,6 +14,12 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+# ==========================================
+# Session State
+# ==========================================
+if "prediction_history" not in st.session_state:
+    st.session_state.prediction_history = []
 
 # ============================
 # Sidebar
@@ -99,6 +106,18 @@ HOLDOUT_ENGINEERED_PATH = load_from_s3(
 HOLDOUT_META_PATH = load_from_s3(
     "processed/cleaning_holdout.csv", "data/processed/cleaning_holdout.csv"
 )
+MODEL_PATH = load_from_s3(
+    "models/xgb_best_model.pkl",
+    "models/xgb_best_model.pkl",
+)
+
+
+@st.cache_resource
+def load_model():
+    return load(MODEL_PATH)
+
+
+model = load_model()
 
 
 # ============================
@@ -187,6 +206,24 @@ if st.button("🚀 Generate Predictions"):
                 view["actual_price"] = pd.Series(actuals, index=view.index).astype(
                     float
                 )
+
+            # ==========================================
+            # Save prediction run summary
+            # ==========================================
+            history_entry = {
+                "Run Time": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "Records": len(view),
+                "Average Prediction": round(view["prediction"].mean(), 2),
+                "Minimum Prediction": round(view["prediction"].min(), 2),
+                "Maximum Prediction": round(view["prediction"].max(), 2),
+            }
+
+            st.session_state.prediction_history.append(history_entry)
+
+            # Keep only the last 10 runs
+            st.session_state.prediction_history = st.session_state.prediction_history[
+                -10:
+            ]
 
             # Metrics
             mae = (view["prediction"] - view["actual_price"]).abs().mean()
@@ -281,6 +318,135 @@ if st.button("🚀 Generate Predictions"):
                 lambda m: "Selected" if m == month else "Other"
             )
 
+            # ============================
+            # Prediction Distribution
+            # ============================
+            st.markdown("---")
+            st.subheader("📊 Prediction Distribution")
+
+            distribution_df = view[["actual_price", "prediction"]].copy()
+
+            distribution_df = distribution_df.melt(var_name="Type", value_name="Price")
+
+            fig_distribution = px.histogram(
+                distribution_df,
+                x="Price",
+                color="Type",
+                barmode="overlay",
+                opacity=0.7,
+                nbins=30,
+                labels={"Price": "House Price ($)", "Type": ""},
+            )
+
+            fig_distribution.update_layout(
+                template="plotly_white",
+                height=450,
+                legend_title_text="",
+            )
+
+            fig_distribution.for_each_trace(
+                lambda t: t.update(
+                    name=(
+                        "Actual Price"
+                        if t.name == "actual_price"
+                        else "Predicted Price"
+                    )
+                )
+            )
+
+            st.plotly_chart(fig_distribution, width="stretch")
+
+            # ============================
+            # Region Comparison
+            # ============================
+            st.markdown("---")
+            st.subheader("🌍 Region Comparison")
+
+            region_avg = (
+                view.groupby("region")[["actual_price", "prediction"]]
+                .mean()
+                .reset_index()
+            )
+
+            region_avg = region_avg.sort_values("actual_price", ascending=False).head(
+                10
+            )
+
+            region_chart = region_avg.melt(
+                id_vars="region",
+                value_vars=["actual_price", "prediction"],
+                var_name="Type",
+                value_name="Average Price",
+            )
+
+            fig_region = px.bar(
+                region_chart,
+                x="Average Price",
+                y="region",
+                color="Type",
+                orientation="h",
+                barmode="group",
+                labels={
+                    "region": "Region",
+                    "Average Price": "Average House Price ($)",
+                    "Type": "",
+                },
+            )
+
+            fig_region.update_layout(
+                template="plotly_white",
+                height=500,
+                legend_title_text="",
+            )
+
+            fig_region.for_each_trace(
+                lambda t: t.update(
+                    name=(
+                        "Actual Price"
+                        if t.name == "actual_price"
+                        else "Predicted Price"
+                    )
+                )
+            )
+
+            st.plotly_chart(fig_region, width="stretch")
+
+            # ============================
+            # Feature Importance
+            # ============================
+            st.markdown("---")
+            st.subheader("📌 Feature Importance")
+
+            feature_names = fe_df.columns[:-1]
+
+            importance_df = pd.DataFrame(
+                {
+                    "Feature": feature_names,
+                    "Importance": model.feature_importances_,
+                }
+            )
+
+            importance_df = importance_df.sort_values(
+                "Importance", ascending=False
+            ).head(15)
+
+            fig_importance = px.bar(
+                importance_df,
+                x="Importance",
+                y="Feature",
+                orientation="h",
+                title=None,
+            )
+
+            fig_importance.update_layout(
+                template="plotly_white",
+                height=550,
+            )
+
+            fig_importance.update_yaxes(autorange="reversed")
+
+            st.plotly_chart(fig_importance, width="stretch")
+
             st.markdown("---")
             st.subheader("📈 Yearly Prediction Trend")
 
@@ -328,6 +494,40 @@ if st.button("🚀 Generate Predictions"):
             )
 
             st.plotly_chart(fig, width="stretch")
+
+            # ==========================================
+            # Prediction History
+            # ==========================================
+            st.markdown("---")
+            st.subheader("📝 Prediction History")
+
+            col1, col2 = st.columns([6, 1])
+
+            with col2:
+                if st.button("🗑️ Clear History"):
+                    st.session_state.prediction_history = []
+                    st.rerun()
+
+            if st.session_state.prediction_history:
+                history = pd.DataFrame(st.session_state.prediction_history)
+
+                # Show newest prediction first
+                history = history.iloc[::-1].reset_index(drop=True)
+
+                for col in [
+                    "Average Prediction",
+                    "Minimum Prediction",
+                    "Maximum Prediction",
+                ]:
+                    history[col] = history[col].map(lambda x: f"${x:,.2f}")
+
+                st.dataframe(
+                    history,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
+                st.info("No predictions have been made yet.")
 
         except requests.exceptions.ConnectionError:
             st.error("❌ Unable to connect to the Prediction API.")
