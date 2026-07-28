@@ -1,4 +1,6 @@
+import logging
 import os
+import time
 from pathlib import Path
 
 import boto3
@@ -7,6 +9,21 @@ import plotly.express as px
 import requests
 import streamlit as st
 from joblib import load
+
+# ==========================================
+# Configure Logging
+# ==========================================
+Path("logs").mkdir(exist_ok=True)
+
+logging.basicConfig(
+    filename="logs/app.log",
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s",
+)
+
+logger = logging.getLogger(__name__)
+
+logger.info("Housing Price Prediction Dashboard started.")
 
 st.set_page_config(
     page_title="Housing Price Prediction Dashboard",
@@ -21,6 +38,24 @@ st.set_page_config(
 if "prediction_history" not in st.session_state:
     st.session_state.prediction_history = []
 
+# ==========================================
+# Monitoring
+# ==========================================
+if "prediction_count" not in st.session_state:
+    st.session_state.prediction_count = 0
+
+if "dashboard_start_time" not in st.session_state:
+    st.session_state.dashboard_start_time = pd.Timestamp.now()
+
+if "last_prediction_time" not in st.session_state:
+    st.session_state.last_prediction_time = None
+
+if "records_processed" not in st.session_state:
+    st.session_state.records_processed = 0
+
+if "average_records" not in st.session_state:
+    st.session_state.average_records = 0
+
 # ============================
 # Sidebar
 # ============================
@@ -29,54 +64,71 @@ st.sidebar.title("🏠 Housing Dashboard")
 
 st.sidebar.markdown("---")
 
+st.sidebar.subheader("🛠️ Tech Stack")
+
 st.sidebar.markdown("""
-### 📌 Project
-
-**Model**
-- XGBoost Regressor
-
-**Dataset**
-- Zillow Housing Prices
-
-**Framework**
-- Streamlit + FastAPI
-
-**Cloud Storage**
+- FastAPI
+- Streamlit
+- XGBoost
 - AWS S3
+- Railway
+- MLflow
+- GitHub Actions
 """)
 
 st.sidebar.markdown("---")
 
-st.sidebar.subheader("⚙️ System Status")
+st.sidebar.subheader("📈 Dashboard Monitoring")
 
-try:
-    health = requests.get("http://127.0.0.1:8000/health", timeout=5)
-    health.raise_for_status()
+uptime = pd.Timestamp.now() - st.session_state.dashboard_start_time
 
-    health_data = health.json()
+st.sidebar.metric(
+    "📊 Total Predictions",
+    st.session_state.prediction_count,
+)
 
-    st.sidebar.success("✅ API Connected")
+st.sidebar.metric(
+    "📦 Records Processed",
+    f"{st.session_state.records_processed:,}",
+)
 
-    if health_data["status"] == "healthy":
-        st.sidebar.success("✅ Model Loaded")
+st.sidebar.metric(
+    "📈 Average Records per Request",
+    f"{st.session_state.average_records:,.0f}",
+)
 
-        st.sidebar.markdown("### 📊 Model Details")
+if st.session_state.last_prediction_time is None:
+    last_prediction_time = "N/A"
+else:
+    last_prediction_time = f"{st.session_state.last_prediction_time:.3f} sec"
 
-        st.sidebar.write(
-            f"*Expected Features:* {health_data.get('n_features_expected', 'Unknown')}"
-        )
+st.sidebar.metric(
+    "⚡️ Prediction Latency",
+    last_prediction_time,
+)
 
-        st.sidebar.write(f"*Model File:* {Path(health_data['model_path']).name}")
+total_seconds = int(uptime.total_seconds())
 
-    else:
-        st.sidebar.error("❌ Model Not Loaded")
+hours = total_seconds // 3600
+minutes = (total_seconds % 3600) // 60
+seconds = total_seconds % 60
 
-except requests.exceptions.RequestException:
-    st.sidebar.error("❌ API Offline")
+formatted_uptime = f"{hours:02}:{minutes:02}:{seconds:02}"
+
+st.sidebar.metric(
+    "⏱️ Dashboard Uptime",
+    formatted_uptime,
+)
+
+st.sidebar.success("🟢 Status: Running")
 
 st.sidebar.markdown("---")
+st.sidebar.subheader("📦 Model Information")
 
-st.sidebar.caption("Version 1.0")
+st.sidebar.write("**Model:** XGBoost Regressor")
+st.sidebar.write("**Expected Features:** 39")
+st.sidebar.write("**Model File:** xgb_best_model.pkl")
+st.sidebar.caption("Version 1.0.0")
 
 # ============================
 # Config
@@ -177,6 +229,7 @@ with st.container():
         region = st.selectbox("🌍 Region", regions, index=0)
 
 if st.button("🚀 Generate Predictions"):
+    start_time = time.perf_counter()
     mask = (disp_df["year"] == year) & (disp_df["month"] == month)
     if region != "All":
         mask &= disp_df["region"] == region
@@ -207,15 +260,44 @@ if st.button("🚀 Generate Predictions"):
                     float
                 )
 
+            logger.info(
+                f"Prediction generated | "
+                f"Region={region} | "
+                f"Year={year} | "
+                f"Month={month} | "
+                f"Records={len(view)} | "
+                f"Average Prediction=${view['prediction'].mean():,.2f}"
+            )
+
+            # ==========================================
+            # Monitoring
+            # ==========================================
+            st.session_state.prediction_count += 1
+
+            records = len(view)
+
+            st.session_state.records_processed += records
+
+            st.session_state.average_records = (
+                st.session_state.records_processed / st.session_state.prediction_count
+            )
+
+            elapsed_time = time.perf_counter() - start_time
+            st.session_state.last_prediction_time = elapsed_time
+
             # ==========================================
             # Save prediction run summary
             # ==========================================
             history_entry = {
                 "Run Time": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "Year": year,
+                "Month": month,
+                "Region": region,
                 "Records": len(view),
                 "Average Prediction": round(view["prediction"].mean(), 2),
                 "Minimum Prediction": round(view["prediction"].min(), 2),
                 "Maximum Prediction": round(view["prediction"].max(), 2),
+                "Prediction Time (s)": round(elapsed_time, 3),
             }
 
             st.session_state.prediction_history.append(history_entry)
@@ -505,7 +587,14 @@ if st.button("🚀 Generate Predictions"):
 
             with col2:
                 if st.button("🗑️ Clear History"):
+
                     st.session_state.prediction_history = []
+
+                    st.session_state.prediction_count = 0
+                    st.session_state.records_processed = 0
+                    st.session_state.average_records = 0
+                    st.session_state.last_prediction_time = None
+
                     st.rerun()
 
             if st.session_state.prediction_history:
@@ -530,17 +619,23 @@ if st.button("🚀 Generate Predictions"):
                 st.info("No predictions have been made yet.")
 
         except requests.exceptions.ConnectionError:
+            logger.error("Connection to Prediction API failed.")
+
             st.error("❌ Unable to connect to the Prediction API.")
             st.info("Please make sure the FastAPI server is running on port 8000.")
 
         except requests.exceptions.Timeout:
+            logger.error("Prediction API request timed out.")
+
             st.error("⏱️ The Prediction API took too long to respond.")
 
         except requests.exceptions.HTTPError as e:
             status_code = e.response.status_code if e.response else "Unknown"
+            logger.error(f"Prediction API returned HTTP {status_code}")
             st.error(f"⚠️ API returned an error: {status_code}")
 
         except requests.exceptions.RequestException:
+            logger.exception("Unexpected network error occurred.")
             st.error(
                 "❌ An unexpected network error occurred while generating predictions."
             )
