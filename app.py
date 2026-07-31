@@ -201,7 +201,7 @@ fe_df, disp_df = load_data()
 # ============================
 # UI
 # ============================
-st.title("🏠 Housing Price Prediction Dashboard")
+st.title("🏠 Housing Price Prediction Dashboard 🚀 BUILD TEST 31 JULY")
 
 st.markdown("""
 Analyze machine learning predictions on unseen housing data.
